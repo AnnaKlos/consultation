@@ -62,9 +62,13 @@
 
     /* ============ Loader ============ */
     let loaded = false;
+    let loadedAt = 0;
+    // --boot из CSS (сколько держится заставка после is-loaded), в мс
+    const bootMs = (parseFloat(getComputedStyle(root).getPropertyValue('--boot')) || 1.5) * 1000;
     const markLoaded = () => {
       if (loaded) return;
       loaded = true;
+      loadedAt = now();
       body.classList.add('is-loaded');
       invalidate();
     };
@@ -190,6 +194,11 @@
           entries.forEach((en) => {
             // вошёл во вьюпорт ИЛИ уже проскроллен выше (например, при загрузке с якоря)
             if (en.isIntersecting || en.boundingClientRect.bottom <= 0) {
+              // Заголовок hero, до которого долистали уже после заставки (мобильный: фото над текстом),
+              // появляется сразу — без задержки «на заставку».
+              if (loaded && now() - loadedAt > bootMs && en.target.classList.contains('hero__title')) {
+                en.target.classList.add('is-late');
+              }
               en.target.classList.add('is-in');
               revealIO.unobserve(en.target);
             }
