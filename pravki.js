@@ -162,11 +162,16 @@
   }
   var loaded = {};
   // скачать код с отменой по таймауту и выполнить; при неудаче — следующий адрес
+  // ms — сколько ждать, пока сервер начнёт отвечать; само скачивание может идти дольше
+  // (на медленном интернете библиотека грузится долго, но это не повод бросать её)
   function fetchCode(url, ms) {
     var ctrl = window.AbortController ? new AbortController() : null;
-    var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, ms);
+    var abort = function () { if (ctrl) ctrl.abort(); };
+    var timer = setTimeout(abort, ms);
     return fetch(url, { mode: 'cors', signal: ctrl ? ctrl.signal : undefined }).then(function (r) {
+      clearTimeout(timer);
       if (!r.ok) throw new Error('HTTP ' + r.status);
+      timer = setTimeout(abort, 60000);
       return r.text();
     }).then(function (code) { clearTimeout(timer); return code; }, function (e) { clearTimeout(timer); throw e; });
   }
