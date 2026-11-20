@@ -1,0 +1,8 @@
+# Публикуем только сайт; рабочие материалы остаются локально
+tools/
+SPEC.md
+copy.txt
+img/anna-coffee.jpg
+img/anna-full.jpg
+img/anna-portrait.jpg
+img/anna-portrait-sm.jpg
