@@ -473,11 +473,7 @@ body.is-loaded .h-in { animation: h-rise 1.2s var(--ease) calc(var(--d, 0s) + va
 @keyframes h-rise { from { opacity: 0; transform: translateY(26px); } to { opacity: 1; transform: none; } }
 @keyframes h-failsafe { to { opacity: 1; } }
 html.js body:not(.is-loaded) .hero__title .word__inner { transform: translateY(105%); }
-html.js .hero__title .word__inner { transition-delay: calc(var(--boot) + .55s + var(--i, 0) * 120ms); transition-duration: 1.3s; animation: title-failsafe .01s linear 6s forwards; }
-/* заголовок hero появляется вместе с остальным hero по body.is-loaded, без IntersectionObserver:
-   на мобильном фото стоит над текстом, и h1 оказывается ниже порога IO → ждал скролла */
-html.js body.is-loaded .hero__title .word__inner { transform: none; animation: none; }
-@keyframes title-failsafe { to { transform: none; } }
+html.js .hero__title .word__inner { transition-delay: calc(var(--boot) + .55s + var(--i, 0) * 120ms); transition-duration: 1.3s; }
 html.js .hero .photo picture img { transform: scale(1.06); transition: transform 2.8s var(--ease) calc(var(--boot) + .2s); }
 body.is-loaded .hero .photo picture img { transform: scale(1); }
 
