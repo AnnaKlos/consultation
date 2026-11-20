@@ -7,11 +7,23 @@
 (function () {
   'use strict';
 
+  // у каждой библиотеки есть запасные адреса: если один CDN не отвечает — берём с другого
   var CDN = {
-    fabric: 'https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.0/fabric.min.js',
-    zip: 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js',
+    fabric: [
+      'https://cdn.jsdelivr.net/npm/fabric@5.3.0/dist/fabric.min.js',
+      'https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.0/fabric.min.js',
+      'https://unpkg.com/fabric@5.3.0/dist/fabric.min.js',
+    ],
+    zip: [
+      'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js',
+      'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js',
+      'https://unpkg.com/jszip@3.10.1/dist/jszip.min.js',
+    ],
     // форк html2canvas, понимающий современные CSS-цвета (color(), oklch и т.п.)
-    h2c: 'https://cdn.jsdelivr.net/npm/html2canvas-pro@2.5.4/dist/html2canvas-pro.min.js',
+    h2c: [
+      'https://cdn.jsdelivr.net/npm/html2canvas-pro@2.5.4/dist/html2canvas-pro.min.js',
+      'https://unpkg.com/html2canvas-pro@2.5.4/dist/html2canvas-pro.min.js',
+    ],
   };
 
   function wanted() {
@@ -23,9 +35,17 @@
     if (started || !wanted()) return;
     started = true;
     try { sessionStorage.setItem('pravki-on', '1'); } catch (e) {}
-    var go = function () { setTimeout(start, 250); };
+    // стартуем после полной загрузки, но не позже чем через 2 с после построения страницы
+    // (медленные шрифты/картинки не должны задерживать панель правок)
+    var fired = false;
+    var go = function () { if (fired) return; fired = true; setTimeout(start, 250); };
     if (document.readyState === 'complete') go();
-    else window.addEventListener('load', go, { once: true });
+    else {
+      window.addEventListener('load', go, { once: true });
+      var soon = function () { setTimeout(go, 2000); };
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', soon, { once: true });
+      else soon();
+    }
   }
 
   /* ===================== утилиты ===================== */
@@ -87,7 +107,7 @@
     if (!el) return '';
     if (el.tagName === 'PRAVKI-BLOCK') {
       var it = findItem(el.getAttribute('data-id'));
-      return 'новый раздел' + (it && it.title ? ' «' + cut(it.title, 30) + '»' : '');
+      return 'Новый' + (it && it.title ? ': ' + cut(it.title, 30) : ' раздел');
     }
     var n = el.getAttribute('data-chapter') || el.getAttribute('aria-label');
     if (!n) { var h = el.querySelector('h1,h2,h3'); if (h) n = cleanText(h); }
@@ -141,15 +161,34 @@
     return ({ 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif', 'image/heic': 'heic' })[f.blob.type] || 'bin';
   }
   var loaded = {};
-  function loadScript(url) {
-    if (loaded[url]) return loaded[url];
-    loaded[url] = new Promise(function (res, rej) {
-      var s = doc.createElement('script');
-      s.src = url; s.onload = res;
-      s.onerror = function () { delete loaded[url]; rej(new Error('Не удалось загрузить ' + url)); };
-      doc.head.appendChild(s);
-    });
-    return loaded[url];
+  // скачать код с отменой по таймауту и выполнить; при неудаче — следующий адрес
+  function fetchCode(url, ms) {
+    var ctrl = window.AbortController ? new AbortController() : null;
+    var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, ms);
+    return fetch(url, { mode: 'cors', signal: ctrl ? ctrl.signal : undefined }).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.text();
+    }).then(function (code) { clearTimeout(timer); return code; }, function (e) { clearTimeout(timer); throw e; });
+  }
+  function loadScript(list) {
+    var key = list[0];
+    if (loaded[key]) return loaded[key];
+    var i = 0;
+    var attempt = function () {
+      var url = list[i];
+      return fetchCode(url, 8000).then(function (code) {
+        var s = doc.createElement('script');
+        s.textContent = code + '\n//# sourceURL=' + url;
+        doc.head.appendChild(s);
+      }).catch(function (e) {
+        console.warn('[pravki] не загрузилось', url, e && e.name);
+        i++;
+        if (i < list.length) return attempt();
+        throw new Error('Не удалось загрузить библиотеку');
+      });
+    };
+    loaded[key] = attempt().catch(function (e) { delete loaded[key]; throw e; });
+    return loaded[key];
   }
   // чтение файла с ограничением по времени (на случай, если браузер «повис» на файле)
   function readBuf(blob, ms) {
@@ -249,10 +288,11 @@
     };
     if (now) run(); else saveTimer = setTimeout(run, 300);
     renderCount();
+    drawOverlays();
   }
   function usedFile(id) {
     return state.items.some(function (it) {
-      return it.file === id || (it.files || []).indexOf(id) >= 0 || (it.sketch && it.sketch.png === id);
+      return it.file === id || (it.files || []).indexOf(id) >= 0 || (it.sketch && (it.sketch.png === id || it.sketch.overlay === id));
     });
   }
   function addFile(blob, name) { var id = uid(); files.set(id, { blob: blob, name: name || '' }); return id; }
@@ -421,10 +461,10 @@
     '.toast{position:fixed;left:50%;top:16px;transform:translateX(-50%);background:#0f172a;color:#fff;padding:10px 16px;border-radius:10px;font-size:14px;z-index:30;max-width:92vw;box-shadow:0 8px 24px rgba(0,0,0,.25)}',
     '.edit-bar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--kb,0px) + 12px);display:flex;gap:8px;background:#fff;padding:8px;border-radius:14px;box-shadow:0 8px 30px rgba(15,23,42,.3);z-index:12}',
     '.layer{position:absolute;left:0;top:0;width:100%;height:0;z-index:2}',
-    '.gap{position:absolute;left:50%;transform:translate(-50%,-50%);background:#2563eb;color:#fff;border:3px solid #fff;box-shadow:0 4px 18px rgba(37,99,235,.5);border-radius:999px;padding:10px 18px;font-weight:600;white-space:nowrap}',
-    '.gap:hover{background:#1d4ed8}',
-    '.topbar{position:fixed;top:0;left:0;right:0;background:#1e3a8a;color:#fff;padding:10px 12px;display:flex;gap:10px;align-items:center;justify-content:center;font-size:15px;z-index:6;flex-wrap:wrap}',
-    '.topbar button{min-height:36px;padding:6px 12px}',
+    '.choices{display:flex;flex-direction:column;gap:8px}',
+    '.choices button{text-align:left}',
+    '.ovl{position:absolute;pointer-events:none;z-index:1}',
+    '.it img.th{display:block;max-width:100%;max-height:150px;border-radius:8px;border:1px solid #e2e8f0;margin:0 0 8px}',
     /* эскиз */
     '.sk{position:fixed;inset:0;background:#e2e8f0;z-index:20;display:flex;flex-direction:column;color:#0f172a}',
     '.sk-head{display:flex;align-items:center;gap:8px;padding:8px 10px;background:#fff;border-bottom:1px solid #cbd5e1}',
@@ -448,7 +488,6 @@
   var host, root, panel, selBox, hovBox, layer, countBtn;
   var selection = null;
   var editing = null;
-  var insertMode = false;
 
   function h(html) {
     var t = doc.createElement('template');
@@ -565,7 +604,7 @@
     window.addEventListener('scroll', positionBoxes, { passive: true });
     window.addEventListener('resize', positionBoxes);
     doc.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') { if (editing) finishEdit(true); else if (insertMode) stopInsert(); else { closeSheets(); clearSelection(); } }
+      if (e.key === 'Escape') { if (editing) finishEdit(true); else { closeSheets(); clearSelection(); } }
     });
     doc.addEventListener('visibilitychange', function () { if (doc.hidden) save(true); });
   }
@@ -602,7 +641,7 @@
     return null;
   }
   function onHover(e) {
-    if (selection || editing || insertMode || openSheets.length) { hovBox.hidden = true; return; }
+    if (selection || editing || openSheets.length) { hovBox.hidden = true; return; }
     if (isOurs(e)) { hovBox.hidden = true; return; }
     var el = pickAt(e.clientX, e.clientY);
     hovBox._el = el;
@@ -619,7 +658,7 @@
   function positionBoxes() {
     if (selection) placeBox(selBox, selection);
     if (hovBox._el && !hovBox.hidden) placeBox(hovBox, hovBox._el);
-    if (insertMode) drawGaps();
+    drawOverlays();
   }
   function clearSelection() { selection = null; selBox.hidden = true; }
 
@@ -631,7 +670,6 @@
     e.preventDefault();
     e.stopImmediatePropagation();
     if (editing) { finishEdit(); return; }
-    if (insertMode) return;
     if (openSheets.length) { closeSheets(); clearSelection(); return; }
     var el = pickAt(e.clientX, e.clientY);
     if (el) selectEl(el);
@@ -818,46 +856,72 @@
       return r.height > 40 && getComputedStyle(c).position !== 'fixed';
     });
   }
-  var topbar = null;
+  // список мест «куда вставить» — всегда виден, не зависит от прокрутки
   function startInsert() {
-    insertMode = true;
-    topbar = h('<div class="topbar"><span>Выберите, куда вставить новый раздел</span><button>Отмена</button></div>');
-    topbar.querySelector('button').onclick = stopInsert;
-    root.appendChild(topbar);
-    drawGaps();
-  }
-  function stopInsert() {
-    insertMode = false;
-    layer.innerHTML = '';
-    if (topbar) { topbar.remove(); topbar = null; }
-  }
-  function drawGaps() {
-    layer.innerHTML = '';
     var bl = topBlocks();
-    if (!bl.length) return;
-    var sy = window.scrollY;
-    var hostTop = host.getBoundingClientRect().top + sy;
+    if (!bl.length) { toast('Не нашёл разделов на странице — опишите идею в «💬 Пожелание»', 4000); return; }
+    var body = h('<div class="choices"></div>');
+    var sh;
     for (var i = 0; i <= bl.length; i++) {
       var prev = bl[i - 1], next = bl[i];
-      var y = next ? next.getBoundingClientRect().top + sy : prev.getBoundingClientRect().bottom + sy;
-      if (i === 0) y += 34; else if (!next) y -= 34;
-      var label = prev && next ? 'между «' + blockName(prev) + '» и «' + blockName(next) + '»'
-        : next ? 'в самом начале, перед «' + blockName(next) + '»' : 'в конце, после «' + blockName(prev) + '»';
-      var b = h('<button class="gap">＋ Вставить раздел сюда</button>');
-      b.style.top = (y - hostTop) + 'px';
-      b.title = label;
+      var label, text;
+      if (prev && next) { label = 'между «' + blockName(prev) + '» и «' + blockName(next) + '»'; text = '↕ Между «' + blockName(prev) + '» и «' + blockName(next) + '»'; }
+      else if (next) { label = 'в самом начале, перед «' + blockName(next) + '»'; text = '⬆ В самом начале, перед «' + blockName(next) + '»'; }
+      else { label = 'в конце, после «' + blockName(prev) + '»'; text = '⬇ В конце, после «' + blockName(prev) + '»'; }
+      var b = h('<button></button>');
+      b.textContent = text;
       (function (prev, next, label) {
         b.onclick = function () {
           var ref = prev || next;
           var pos = { where: prev ? 'after' : 'before', label: label };
           if (ref.tagName === 'PRAVKI-BLOCK') pos.refNew = ref.getAttribute('data-id');
           else pos.ref = cssPath(ref);
-          stopInsert();
+          sh.close();
           sectionEditor(null, pos);
         };
       })(prev, next, label);
-      layer.appendChild(b);
+      body.appendChild(b);
     }
+    sh = sheet({
+      title: '＋ Куда вставить новый раздел?',
+      sub: 'Выберите место — откроется холст, где можно нарисовать раздел и вписать текст.',
+      body: body,
+      buttons: [{ text: 'Отмена' }],
+    });
+  }
+
+  // рисунки «поверх блока» показываем прямо на сайте (только пометки, без фона)
+  var overlays = new Map();
+  function drawOverlays() {
+    if (!layer) return;
+    var sx = window.scrollX, sy = window.scrollY;
+    var hr = host.getBoundingClientRect();
+    var hostLeft = hr.left + sx, hostTop = hr.top + sy;
+    var alive = {};
+    state.items.forEach(function (it) {
+      var sk = it.sketch;
+      if (it.type !== 'draw' || !sk || !sk.overlay || !sk.crop || !files.get(sk.overlay)) return;
+      var el = byPath(it.t.path);
+      if (!el) return;
+      var r = el.getBoundingClientRect();
+      if (!r.width || !r.height) return;
+      var cr = sk.crop, k = r.width / (cr.ew || r.width);
+      var img = overlays.get(it.id);
+      if (!img) {
+        img = doc.createElement('img');
+        img.className = 'ovl'; img.alt = '';
+        layer.appendChild(img);
+        overlays.set(it.id, img);
+      }
+      var url = fileURL(sk.overlay);
+      if (img.getAttribute('src') !== url) img.src = url;
+      img.style.left = (r.left + sx - hostLeft + cr.dx * k) + 'px';
+      img.style.top = (r.top + sy - hostTop + cr.dy * k) + 'px';
+      img.style.width = (cr.w * k) + 'px';
+      img.style.height = (cr.h * k) + 'px';
+      alive[it.id] = 1;
+    });
+    overlays.forEach(function (img, id) { if (!alive[id]) { img.remove(); overlays.delete(id); } });
   }
 
   /* ===================== редактор эскизов ===================== */
@@ -897,7 +961,7 @@
       return sketchEditor({
         title: 'Рисунок поверх блока', sub: item.t.kind + ' · ' + item.t.where, sketch: item.sketch,
         fields: [{ key: 'comment', label: 'Пояснение', value: item.comment, area: true }],
-        onSave: function (res) { item.sketch = res.sketch; item.comment = res.comment; save(); toast('✓ Сохранено'); },
+        onSave: function (res) { item.sketch = res.sketch; item.comment = res.comment; save(); toast('✓ Рисунок обновлён'); },
       });
     }
     toast('Делаю снимок блока…', 1800);
@@ -915,7 +979,11 @@
         scale: Math.min(2, window.devicePixelRatio || 1), useCORS: true, logging: false,
         ignoreElements: function (n) { return n === host; },
       }).then(function (cv) {
-        return { url: cv.toDataURL('image/jpeg', 0.88), w: Math.round(vw), h: Math.round(vh) };
+        return {
+          url: cv.toDataURL('image/jpeg', 0.88), w: Math.round(vw), h: Math.round(vh),
+          // где снимок лежит относительно блока — чтобы потом наложить пометки на сайт
+          crop: { dx: vx - r.left, dy: vy - r.top, w: Math.round(vw), h: Math.round(vh), ew: r.width },
+        };
       });
     }).then(function (shot) {
       sketchEditor({
@@ -926,7 +994,7 @@
           if (res.empty && !res.comment) return 'Нарисуйте что-нибудь или напишите пояснение';
           state.items.push({ id: uid(), type: 'draw', t: target(el), sketch: res.sketch, comment: res.comment });
           save();
-          toast('✓ Рисунок сохранён');
+          toast('✓ Рисунок сохранён. Ваши пометки видны поверх блока и уйдут в файл правок картинкой', 4500);
         },
       });
     }).catch(function (err) {
@@ -1164,8 +1232,18 @@
       if (res.empty) return finish();
       var mult = (1 / scale) * Math.min(2, window.devicePixelRatio || 1);
       var url = c.toDataURL({ format: 'png', multiplier: mult });
-      blobFromDataURL(url).then(function (blob) {
-        res.sketch = { w: W, h: H, json: c.toJSON(), png: addFile(blob, 'sketch.png') };
+      var crop = o.background ? o.background.crop : (o.sketch && o.sketch.crop);
+      var ovUrl = null;
+      if (crop) {
+        // отдельный прозрачный слой только с пометками — его накладываем на сайт
+        var bgI = c.backgroundImage, bgC = c.backgroundColor;
+        c.backgroundImage = null; c.backgroundColor = '';
+        ovUrl = c.toDataURL({ format: 'png', multiplier: mult });
+        c.backgroundImage = bgI; c.backgroundColor = bgC; c.renderAll();
+      }
+      Promise.all([blobFromDataURL(url), ovUrl ? blobFromDataURL(ovUrl) : null]).then(function (bl) {
+        res.sketch = { w: W, h: H, json: c.toJSON(), png: addFile(bl[0], 'sketch.png') };
+        if (bl[1]) { res.sketch.overlay = addFile(bl[1], 'overlay.png'); res.sketch.crop = crop; }
         finish();
       });
     };
@@ -1189,6 +1267,11 @@
     var body = h('<div class="list"></div>');
     if (!state.items.length) body.appendChild(h('<p class="sub">Пока нет ни одной правки. Нажмите на любое место сайта, чтобы начать.</p>'));
     var sh;
+    if (state.items.length) {
+      var top = h('<div class="foot" style="justify-content:flex-start;margin:0 0 4px"><button class="danger">🗑 Очистить все правки</button></div>');
+      top.querySelector('button').onclick = function () { sh.close(); clearAll(); };
+      body.appendChild(top);
+    }
     state.items.forEach(function (it, i) {
       var tp = TYPE[it.type];
       var where = it.t ? ' · ' + it.t.where.replace(/ \(#.*\)$/, '') : '';
@@ -1196,6 +1279,14 @@
       row.querySelector('.h').textContent = (i + 1) + '. ' + tp[0] + ' ' + tp[1] + where;
       row.querySelector('.d').textContent = itemSummary(it);
       if (it.lost) row.insertBefore(h('<div class="lost">⚠️ Место на сайте изменилось — правка сохранена, но показать её не получится</div>'), row.querySelector('.d'));
+      // миниатюра: эскиз, рисунок поверх блока или новое фото
+      var thId = it.sketch ? it.sketch.png : it.type === 'photo' ? it.file : null;
+      if (thId && files.get(thId)) {
+        var th = h('<img class="th" alt="">');
+        th.src = fileURL(thId);
+        row.insertBefore(th, row.querySelector('.b'));
+        if (it.type === 'draw') row.insertBefore(h('<div class="d">Уйдёт в файл правок картинкой: снимок блока с вашими пометками</div>'), row.querySelector('.b'));
+      }
       var bb = row.querySelector('.b');
       var btn = function (text, fn, cls) { var b = h('<button></button>'); b.textContent = text; if (cls) b.className = cls; b.onclick = fn; bb.appendChild(b); };
       var el = it.type === 'section' ? $('pravki-block[data-id="' + it.id + '"]') : it.t ? byPath(it.t.path) : null;
@@ -1207,14 +1298,15 @@
       body.appendChild(row);
     });
     sh = sheet({ title: '📋 Мои правки' + (state.items.length ? ' (' + state.items.length + ')' : ''), body: body, buttons: [
-      state.items.length ? { text: 'Очистить всё', cls: 'danger', onClick: function () {
-        confirmBox('Удалить все правки?', 'Это действие нельзя отменить.', 'Удалить всё', function () {
-          state.items.slice().forEach(function (it) { unapplyItem(it); });
-          state.items = []; save(true); toast('Все правки удалены');
-        }, true);
-      } } : null,
       { text: 'Закрыть', cls: 'pri' },
     ] });
+  }
+  function clearAll() {
+    if (!state.items.length) { toast('Правок пока нет'); return; }
+    confirmBox('Удалить все правки?', 'Правок: ' + state.items.length + '. Это действие нельзя отменить.', 'Удалить всё', function () {
+      state.items.slice().forEach(function (it) { unapplyItem(it); });
+      state.items = []; save(true); toast('Все правки удалены');
+    }, true);
   }
   function showEl(el) {
     el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1245,6 +1337,7 @@
   function showMore() {
     sheet({ title: 'Ещё', grid: true, buttons: [
       { text: '📂 Открыть файл правок', cls: 'wide', onClick: importFile },
+      { text: '🗑 Очистить все правки', cls: 'wide danger', onClick: clearAll },
       { text: '❓ Как пользоваться', cls: 'wide', onClick: showHelp },
       { text: 'Закрыть', cls: 'wide' },
     ] });
@@ -1339,6 +1432,7 @@
         };
         if (it.file) reg(it.file, 'photos', '');
         if (it.sketch) reg(it.sketch.png, 'sketches', '');
+        if (it.sketch && it.sketch.overlay) reg(it.sketch.overlay, 'sketches', '-sloy');
         (it.files || []).forEach(function (id, k) { reg(id, 'attachments', '-' + (k + 1)); });
       });
       return Promise.all(jobs).then(function () {
@@ -1413,6 +1507,9 @@
     }).then(function () {
       state.items.forEach(function (it) { try { applyItem(it); } catch (e) { it.lost = true; } });
       renderCount();
+      drawOverlays();
+      // страница может «поплыть» (картинки догружаются) — подравниваем рисунки
+      setInterval(drawOverlays, 1500);
       var seen = false;
       try { seen = localStorage.getItem('pravki-help') === '1'; localStorage.setItem('pravki-help', '1'); } catch (e) {}
       if (!seen) showHelp();
