@@ -208,22 +208,22 @@
       inp.style.cssText = 'position:fixed;left:-9999px';
       inp.setAttribute('data-pv-own', '');
       inp.onchange = function () {
-        var list = Array.prototype.slice.call(inp.files || []);
-        // сразу копируем в память: на телефонах доступ к выбранному файлу может пропасть
-        Promise.all(list.map(function (f) {
-          return readBuf(f, 8000).then(function (buf) {
-            var b = new Blob([buf], { type: f.type });
-            b.name = f.name;
-            return b;
-          }).catch(function () { return f; }); // не вышло скопировать — оставляем оригинал
-        })).then(function (arr) {
-          inp.remove();
-          res(arr);
-        });
+        copyFiles(inp.files).then(function (arr) { inp.remove(); res(arr); });
       };
       doc.body.appendChild(inp);
       inp.click();
     });
+  }
+  // сразу копируем выбранные файлы в память: на телефонах доступ к ним может пропасть
+  function copyFiles(fileList) {
+    var list = Array.prototype.slice.call(fileList || []);
+    return Promise.all(list.map(function (f) {
+      return readBuf(f, 8000).then(function (buf) {
+        var b = new Blob([buf], { type: f.type });
+        b.name = f.name;
+        return b;
+      }).catch(function () { return f; }); // не вышло скопировать — оставляем оригинал
+    }));
   }
   // уменьшить картинку для эскиза (чтобы файл правок не раздувался)
   function downscale(blob, max) {
@@ -415,9 +415,12 @@
   var UI_CSS = [
     ':host{all:initial}',
     '*{box-sizing:border-box;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}',
-    '.panel{position:fixed;left:0;right:0;bottom:var(--kb,0px);background:#fff;border-top:1px solid #e2e8f0;box-shadow:0 -6px 24px rgba(15,23,42,.12);padding:8px 10px calc(8px + env(safe-area-inset-bottom));color:#0f172a;z-index:5}',
-    '.hint{font-size:13px;color:#475569;text-align:center;margin:0 0 6px}',
-    '.row{display:flex;gap:6px;justify-content:center;flex-wrap:wrap}',
+    '.panel{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--kb,0px) + 10px + env(safe-area-inset-bottom));background:#fff;border:1px solid #e2e8f0;border-radius:16px;box-shadow:0 8px 28px rgba(15,23,42,.22);padding:5px;color:#0f172a;z-index:5;max-width:calc(100vw - 12px)}',
+    '.row{display:flex;gap:4px;flex-wrap:nowrap;justify-content:center}',
+    '.tip{position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);width:max-content;max-width:calc(100vw - 24px);display:flex;align-items:center;gap:8px;background:#0f172a;color:#fff;font-size:13px;line-height:1.35;padding:7px 8px 7px 12px;border-radius:10px;box-shadow:0 6px 20px rgba(15,23,42,.3)}',
+    '.tip b{flex:0 0 auto;width:26px;height:26px;display:flex;align-items:center;justify-content:center;border-radius:50%;background:rgba(255,255,255,.15);cursor:pointer;font-weight:400}',
+    '.tip b:hover{background:rgba(255,255,255,.3)}',
+    '.sm{display:none}',
     'button{font:inherit;cursor:pointer;border:1px solid #cbd5e1;background:#fff;color:#0f172a;border-radius:10px;padding:9px 12px;font-size:15px;line-height:1.2;min-height:44px;-webkit-tap-highlight-color:transparent}',
     'button:hover{background:#f1f5f9}',
     'button.pri{background:#2563eb;border-color:#2563eb;color:#fff}',
@@ -425,8 +428,8 @@
     'button.danger{color:#b91c1c}',
     'button.on{background:#dbeafe;border-color:#2563eb}',
     'button:disabled{opacity:.45;cursor:default}',
-    '.panel button{flex:1 1 auto;max-width:180px;padding:9px 8px}',
-    '@media (max-width:520px){.panel button{font-size:14px;padding:8px 4px}.panel .row{flex-wrap:nowrap}}',
+    '.panel button{flex:0 0 auto;min-height:38px;padding:7px 12px;font-size:14px;border-radius:11px;white-space:nowrap}',
+    '@media (max-width:560px){.panel{padding:4px}.panel button{min-height:38px;padding:6px 9px;font-size:13px}.lg{display:none}.sm{display:inline}}',
     '.sel,.hov{position:fixed;pointer-events:none;border-radius:6px;z-index:1}',
     '.sel{outline:3px solid #2563eb;outline-offset:2px;box-shadow:0 0 0 9999px rgba(15,23,42,.18)}',
     '.hov{outline:2px dashed #60a5fa;outline-offset:2px}',
@@ -459,7 +462,13 @@
     '.steps{margin:0 0 4px;padding-left:20px;font-size:15px;line-height:1.5}',
     '.steps li{margin-bottom:6px}',
     '.toast{position:fixed;left:50%;top:16px;transform:translateX(-50%);background:#0f172a;color:#fff;padding:10px 16px;border-radius:10px;font-size:14px;z-index:30;max-width:92vw;box-shadow:0 8px 24px rgba(0,0,0,.25)}',
-    '.edit-bar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--kb,0px) + 12px);display:flex;gap:8px;background:#fff;padding:8px;border-radius:14px;box-shadow:0 8px 30px rgba(15,23,42,.3);z-index:12}',
+    '.edit-bar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--kb,0px) + 66px + env(safe-area-inset-bottom));display:flex;gap:8px;background:#fff;padding:8px;border-radius:14px;box-shadow:0 8px 30px rgba(15,23,42,.3);z-index:12}',
+    '.drop{display:flex;align-items:center;justify-content:center;gap:8px;text-align:center;border:2px dashed #93c5fd;background:#eff6ff;color:#1e40af;border-radius:12px;padding:14px 12px;margin:0 0 10px;cursor:pointer;font-size:15px;line-height:1.35;min-height:auto;width:100%}',
+    '.drop:hover,.drop.over{background:#dbeafe;border-color:#2563eb}',
+    '.drop small{display:block;color:#475569;font-size:12px;margin-top:2px}',
+    '.thumb.file{display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f8fafc;padding:4px;width:auto;min-width:72px;max-width:140px}',
+    '.thumb.file i{font-style:normal;font-size:24px}',
+    '.thumb.file span{font-size:11px;color:#334155;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
     '.layer{position:absolute;left:0;top:0;width:100%;height:0;z-index:2}',
     '.choices{display:flex;flex-direction:column;gap:8px}',
     '.choices button{text-align:left}',
@@ -562,16 +571,18 @@
     hovBox = root.appendChild(h('<div class="hov" hidden></div>'));
 
     panel = h(
-      '<div class="panel"><p class="hint">✋ Нажмите на любой текст, фото или блок, чтобы изменить</p><div class="row">' +
+      '<div class="panel"><div class="tip"><span>✋ Нажмите на любой текст, фото или блок, чтобы изменить</span><b role="button" aria-label="Закрыть подсказку">✕</b></div><div class="row">' +
       '<button data-a="section">＋ Раздел</button>' +
-      '<button data-a="general">💬 Пожелание</button>' +
-      '<button data-a="list">📋 Правки</button>' +
+      '<button data-a="general">💬 <span class="lg">Пожелание</span><span class="sm">Идея</span></button>' +
+      '<button data-a="list">📋</button>' +
       '<button data-a="done" class="pri">⬇ Готово</button>' +
       '<button data-a="more" aria-label="Ещё">⋯</button>' +
       '</div></div>'
     );
     root.appendChild(panel);
     countBtn = panel.querySelector('[data-a="list"]');
+    // подсказка показывается при каждом входе, крестик скрывает её до следующего входа
+    panel.querySelector('.tip b').onclick = function () { panel.querySelector('.tip').remove(); };
     panel.addEventListener('click', function (e) {
       var b = e.target.closest('button');
       if (!b) return;
@@ -585,7 +596,7 @@
       else if (a === 'more') showMore();
     });
 
-    var pad = function () { doc.documentElement.style.setProperty('--pv-pad', panel.offsetHeight + 'px'); };
+    var pad = function () { doc.documentElement.style.setProperty('--pv-pad', (panel.offsetHeight + 20) + 'px'); };
     pad();
     window.addEventListener('resize', pad);
     if (window.visualViewport) {
@@ -600,6 +611,9 @@
 
     window.addEventListener('click', onPageClick, true);
     window.addEventListener('submit', function (e) { e.preventDefault(); }, true);
+    // файл, брошенный мимо зоны прикрепления, не должен открываться вместо сайта
+    window.addEventListener('dragover', function (e) { e.preventDefault(); });
+    window.addEventListener('drop', function (e) { e.preventDefault(); });
     if (!isTouch) doc.addEventListener('mousemove', onHover, { passive: true });
     window.addEventListener('scroll', positionBoxes, { passive: true });
     window.addEventListener('resize', positionBoxes);
@@ -609,7 +623,7 @@
     doc.addEventListener('visibilitychange', function () { if (doc.hidden) save(true); });
   }
   function renderCount() {
-    if (countBtn) countBtn.textContent = '📋 Правки' + (state.items.length ? ' · ' + state.items.length : '');
+    if (countBtn) countBtn.innerHTML = '📋 <span class="lg">Правки</span>' + (state.items.length ? '<span class="lg"> · </span>' + state.items.length : '<span class="sm">Правки</span>');
   }
 
   /* ===================== выбор элемента ===================== */
@@ -698,6 +712,7 @@
     if (k === 'text') btns.push({ text: '✏️ Изменить текст', cls: 'pri', onClick: function () { startEdit(el); } });
     if (k === 'image') btns.push({ text: '🖼 Заменить фото', cls: 'pri', onClick: function () { replacePhoto(el); } });
     btns.push({ text: '💬 Комментарий', onClick: function () { commentDialog(el); } });
+    btns.push({ text: '📎 Прикрепить файл', onClick: function () { commentDialog(el, null, true); } });
     if (k !== 'text' || el.getBoundingClientRect().height > 160) btns.push({ text: '🎨 Нарисовать поверх', onClick: function () { drawOver(el); } });
     btns.push({ text: '🗑 Убрать', cls: 'danger', onClick: function () { removeEl(el); } });
     if (canUp) btns.push({ text: '⬆ Выбрать крупнее', onClick: function () { selectEl(parent); return false; } });
@@ -797,14 +812,14 @@
     });
   }
 
-  function commentDialog(el, item) {
+  function commentDialog(el, item, autoPick) {
     if (el) clearSelection();
     var isGeneral = item ? item.type === 'general' : !el;
     var att = item ? (item.files || []).slice() : [];
     var body = h(
-      '<div><textarea placeholder="' + (isGeneral ? 'Например: хочу, чтобы сайт был светлее; добавить отзывы…' : 'Что здесь изменить?') + '"></textarea>' +
-      '<div class="foot" style="justify-content:flex-start;margin-top:8px"><button data-a="att">📎 Приложить картинку</button></div>' +
-      '<div class="thumbs"></div></div>'
+      '<div><button class="drop" data-a="att"><span>📎 <b>Прикрепить файл</b> — фото, документ, PDF<small>Нажмите, чтобы выбрать' + (isTouch ? '' : ', или перетащите файл сюда') + '</small></span></button>' +
+      '<div class="thumbs" style="margin:0 0 10px"></div>' +
+      '<textarea placeholder="' + (isGeneral ? 'Например: хочу, чтобы сайт был светлее; добавить отзывы…' : 'Что здесь изменить? Можно оставить пустым, если прикрепили файл') + '"></textarea></div>'
     );
     var ta = body.querySelector('textarea');
     ta.value = item ? item.comment || '' : '';
@@ -812,29 +827,46 @@
     var drawThumbs = function () {
       thumbs.innerHTML = '';
       att.forEach(function (id) {
-        var t = h('<div class="thumb"><img alt=""><b title="Убрать">✕</b></div>');
-        t.querySelector('img').src = fileURL(id);
+        var f = files.get(id);
+        if (!f) return;
+        var isImg = /^image\//.test(f.blob.type);
+        var t = isImg ? h('<div class="thumb"><img alt=""><b title="Убрать">✕</b></div>')
+          : h('<div class="thumb file"><i>📄</i><span></span><b title="Убрать">✕</b></div>');
+        if (isImg) t.querySelector('img').src = fileURL(id);
+        else { t.querySelector('span').textContent = f.name || 'файл'; t.title = f.name || ''; }
         t.querySelector('b').onclick = function () { att = att.filter(function (x) { return x !== id; }); drawThumbs(); };
         thumbs.appendChild(t);
       });
     };
     drawThumbs();
-    body.querySelector('[data-a="att"]').onclick = function () {
-      pickFiles(true).then(function (fs) {
-        fs.forEach(function (f) { if (f.size <= 25 * 1024 * 1024) att.push(addFile(f, f.name)); });
-        drawThumbs();
+    var addList = function (fs) {
+      var big = 0;
+      fs.forEach(function (f) {
+        if (f.size > 25 * 1024 * 1024) big++;
+        else att.push(addFile(f, f.name));
       });
+      if (big) toast('Файл больше 25 МБ — пришлите его отдельно', 4000);
+      drawThumbs();
     };
+    var pick = function () { pickFiles(true, '*/*').then(addList); };
+    var drop = body.querySelector('.drop');
+    drop.onclick = pick;
+    drop.addEventListener('dragover', function (e) { e.preventDefault(); drop.classList.add('over'); });
+    drop.addEventListener('dragleave', function () { drop.classList.remove('over'); });
+    drop.addEventListener('drop', function (e) {
+      e.preventDefault(); drop.classList.remove('over');
+      copyFiles(e.dataTransfer && e.dataTransfer.files).then(addList);
+    });
     var where = el ? kindLabel(el) + ' · ' + sectionOf(el).replace(/ \(#.*\)$/, '') : '';
     sheet({
-      title: isGeneral ? '💬 Общее пожелание' : '💬 Комментарий',
-      sub: where || (item && item.t ? item.t.kind + ' · ' + item.t.where : 'Любая мысль о сайте — можно приложить картинки-примеры'),
+      title: isGeneral ? '💬 Общее пожелание и файлы' : '💬 Комментарий и файлы',
+      sub: where || (item && item.t ? item.t.kind + ' · ' + item.t.where : 'Любая мысль о сайте. Можно прикрепить свои файлы: фото, тексты, примеры'),
       body: body,
       buttons: [
         { text: 'Отмена' },
         { text: '✓ Сохранить', cls: 'pri', onClick: function () {
           var c = norm(ta.value);
-          if (!c && !att.length) { toast('Напишите комментарий или приложите картинку'); return false; }
+          if (!c && !att.length) { toast('Напишите комментарий или прикрепите файл'); return false; }
           if (item) { item.comment = c; item.files = att; }
           else state.items.push(el ? { id: uid(), type: 'comment', t: target(el), comment: c, files: att }
             : { id: uid(), type: 'general', comment: c, files: att });
@@ -843,7 +875,9 @@
         } },
       ],
     });
-    setTimeout(function () { ta.focus(); }, 50);
+    // «📎 Прикрепить файл» из меню — сразу открываем выбор файла (в том же нажатии)
+    if (autoPick) pick();
+    else if (!isTouch) setTimeout(function () { ta.focus(); }, 50);
   }
 
   /* ===================== новый раздел: выбор места ===================== */
@@ -1012,7 +1046,7 @@
       '<button data-t="arrow"><span>➝</span>Стрелка</button>' +
       '<button data-t="pen"><span>✎</span>Карандаш</button>' +
       '<button data-t="text"><span>T</span>Текст</button>' +
-      '<button data-t="photo"><span>🖼</span>Фото</button>' +
+      '<button data-t="photo" title="Вставить картинку в рисунок. Чтобы прислать файл — «📎 Прикрепить файл» в меню элемента"><span>🖼</span>Картинка</button>' +
       '<button data-t="undo"><span>↶</span>Назад</button>' +
       '<button data-t="del"><span>🗑</span>Удалить</button>' +
       '<div class="sk-colors"><small>Цвет:</small>' +
@@ -1260,7 +1294,7 @@
     if (it.type === 'section') return it.pos.label + (it.title ? '\nЗаголовок: ' + it.title : '') + (it.comment ? '\n' + cut(it.comment, 100) : '');
     var s = it.t ? (it.t.text ? '«' + cut(it.t.text, 70) + '»' : it.t.src ? 'фото ' + it.t.src.split('/').pop() : '') : '';
     if (it.comment) s += (s ? '\n' : '') + cut(it.comment, 120);
-    if (it.files && it.files.length) s += '\n📎 картинок: ' + it.files.length;
+    if (it.files && it.files.length) s += '\n📎 файлов: ' + it.files.length;
     return s;
   }
   function showList() {
@@ -1345,9 +1379,10 @@
   function showHelp() {
     var body = h(
       '<ol class="steps">' +
-      '<li><b>Нажмите на любой текст, фото или блок</b> — появится меню: изменить текст, комментарий, заменить фото, нарисовать поверх, убрать.</li>' +
+      '<li><b>Нажмите на любой текст, фото или блок</b> — появится меню: изменить текст, комментарий, прикрепить файл, заменить фото, нарисовать поверх, убрать.</li>' +
+      '<li><b>📎 Прикрепить файл</b> — пришлите свои фото, тексты, документы или примеры: нажмите на нужное место сайта и выберите «📎 Прикрепить файл».</li>' +
       '<li><b>＋ Раздел</b> — добавить новый раздел: выберите место, нарисуйте, как он должен выглядеть, и впишите текст.</li>' +
-      '<li><b>💬 Пожелание</b> — любая общая мысль, можно приложить картинки-примеры.</li>' +
+      '<li><b>💬 Пожелание</b> — любая общая мысль, к ней тоже можно прикрепить файлы.</li>' +
       '<li>Всё сохраняется само. Когда закончите — <b>⬇ Готово</b>: скачается файл. Отправьте его тому, кто ведёт ваш сайт, любым удобным способом.</li>' +
       '<li>Чтобы дописать позже на другом устройстве — <b>⋯ → 📂 Открыть файл правок</b>.</li>' +
       '</ol>'
@@ -1392,7 +1427,10 @@
       if (it.type === 'photo') L.push('Новое фото: ' + names[it.file]);
       if (it.sketch) L.push('Эскиз: ' + names[it.sketch.png]);
       if (it.comment) L.push((it.type === 'section' || it.type === 'draw' ? 'Пояснение: ' : 'Комментарий: ') + it.comment);
-      if (it.files && it.files.length) L.push('Вложения: ' + it.files.map(function (f) { return names[f]; }).join(', '));
+      if (it.files && it.files.length) L.push('Вложения: ' + it.files.map(function (f) {
+        var nm = files.get(f) && files.get(f).name;
+        return names[f] + (nm && names[f] && names[f].indexOf('(') !== 0 ? ' (' + nm + ')' : '');
+      }).join(', '));
       L.push('');
     });
     return L.join('\r\n');
