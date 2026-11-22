@@ -491,10 +491,24 @@
     '@media (max-width:600px){.sk-tools{gap:4px;padding:6px}.sk-tools button{flex:1 0 calc(25% - 4px);min-width:0;min-height:46px;padding:4px 2px;font-size:11px}.sk-tools button span{font-size:17px}.sk-colors{flex:1 0 100%;justify-content:center;margin:2px 0 0}.sk-head h3{font-size:15px}}',
     '.sw{width:30px;height:30px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 0 1px #94a3b8;flex:0 0 auto;cursor:pointer}',
     '.sw.on{box-shadow:0 0 0 3px #0f172a}',
-    '.sk-body{flex:1;overflow:auto;-webkit-overflow-scrolling:touch}',
-    '.sk-stage{display:flex;justify-content:center;padding:10px}',
+    '.sk-main{flex:1;min-height:0;display:flex}',
+    '.sk-draw{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column}',
+    '.sk-stage{flex:1 1 0;min-height:0;overflow:hidden;display:flex;align-items:center;justify-content:center;padding:8px}',
     '.sk-stage .canvas-container{box-shadow:0 4px 20px rgba(15,23,42,.2);background:#fff;touch-action:none}',
-    '.sk-fields{max-width:760px;margin:0 auto;padding:0 12px 16px}',
+    '.sk-drawbar{display:none;padding:8px 10px calc(8px + env(safe-area-inset-bottom));background:#fff;border-top:1px solid #cbd5e1}',
+    '.sk-drawbar button{width:100%;min-height:50px;font-size:17px}',
+    '.sk-form{flex:1;min-height:0;overflow:auto;-webkit-overflow-scrolling:touch;padding:12px;background:#f8fafc}',
+    '.sk-preview{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;width:100%;min-height:96px;border:2px dashed #93c5fd;background:#eff6ff;color:#1e40af;border-radius:12px;padding:10px;font-size:16px;font-weight:600}',
+    '.sk-preview:hover{background:#dbeafe;border-color:#2563eb}',
+    '.sk-preview img{display:block;max-width:100%;max-height:26vh;border-radius:8px;border:1px solid #cbd5e1;background:#fff}',
+    '.sk-preview img[hidden]{display:none}',
+    '.sk-preview small{font-weight:400;color:#475569;font-size:12px}',
+    '.sk-fields{max-width:760px;margin:0 auto}',
+    '.is-form .sk-draw{display:none}',
+    '.is-draw .sk-form,.is-draw .sk-foot{display:none}',
+    '.is-draw .sk-drawbar{display:block}',
+    '.is-wide .sk-form{flex:0 0 340px;border-left:1px solid #cbd5e1}',
+    '.is-wide .sk-preview{display:none}',
     '.sk-foot{display:flex;gap:8px;justify-content:flex-end;padding:8px 10px calc(8px + env(safe-area-inset-bottom));background:#fff;border-top:1px solid #cbd5e1}',
     '.loading{padding:40px;text-align:center;color:#475569}',
   ].join('\n');
@@ -998,7 +1012,7 @@
     clearSelection();
     if (item) {
       return sketchEditor({
-        title: 'Рисунок поверх блока', sub: item.t.kind + ' · ' + item.t.where, sketch: item.sketch,
+        title: 'Рисунок поверх блока', startDraw: true, sub: item.t.kind + ' · ' + item.t.where, sketch: item.sketch,
         fields: [{ key: 'comment', label: 'Пояснение', value: item.comment, area: true }],
         onSave: function (res) { item.sketch = res.sketch; item.comment = res.comment; save(); toast('✓ Рисунок обновлён'); },
       });
@@ -1026,7 +1040,7 @@
       });
     }).then(function (shot) {
       sketchEditor({
-        title: 'Рисунок поверх блока', sub: 'Обведите, зачеркните, поставьте стрелки, подпишите',
+        title: 'Рисунок поверх блока', startDraw: true, sub: 'Обведите, зачеркните, поставьте стрелки, подпишите',
         background: shot,
         fields: [{ key: 'comment', label: 'Пояснение', value: '', area: true }],
         onSave: function (res) {
@@ -1045,6 +1059,7 @@
   function sketchEditor(o) {
     var box = h(
       '<div class="sk"><div class="sk-head"><h3></h3><button data-a="x" aria-label="Закрыть">✕</button></div>' +
+      '<div class="sk-main"><div class="sk-draw">' +
       '<div class="sk-tools">' +
       '<button data-t="rect"><span>▭</span>Блок</button>' +
       '<button data-t="circle"><span>◯</span>Круг</button>' +
@@ -1057,7 +1072,12 @@
       '<div class="sk-colors"><small>Цвет:</small>' +
       COLORS.map(function (c, i) { return '<b class="sw' + (i ? '' : ' on') + '" data-c="' + c + '" style="background:' + c + '"></b>'; }).join('') +
       '</div>' +
-      '</div><div class="sk-body"><div class="sk-stage"><div class="loading">Загружаю холст…</div></div><div class="sk-fields"></div></div>' +
+      '</div>' +
+      '<div class="sk-stage"><div class="loading">Загружаю холст…</div></div>' +
+      '<div class="sk-drawbar"><button data-a="done" class="pri">✓ Готово</button></div>' +
+      '</div><div class="sk-form">' +
+      '<button class="sk-preview" data-a="draw"><img alt="" hidden><span class="t"></span><small></small></button>' +
+      '<div class="sk-fields"></div></div></div>' +
       '<div class="sk-foot"><button data-a="x">Отмена</button><button data-a="ok" class="pri">✓ Сохранить</button></div></div>'
     );
     box.querySelector('h3').textContent = o.title + (o.sub ? ' — ' + o.sub : '');
@@ -1073,14 +1093,59 @@
     panel.hidden = true;
     var stage = box.querySelector('.sk-stage');
     var c = null, color = COLORS[0], hist = [], restoring = false, mode = null, scale = 1, W, H;
+    var canvasStarted = false;
+    loadScript(CDN.fabric).catch(function () {}); // начинаем грузить холст заранее
 
-    var close = function () { box.remove(); panel.hidden = false; window.removeEventListener('resize', fit); if (c) c.dispose(); };
+    var close = function () { box.remove(); panel.hidden = false; window.removeEventListener('resize', relayout); if (c) c.dispose(); };
     box.querySelectorAll('[data-a="x"]').forEach(function (b) { b.onclick = close; });
 
-    function fit() {
+    // Телефон: сначала форма (превью + поля), рисование — на весь экран по нажатию.
+    // Компьютер: холст и поля рядом.
+    var wideMQ = window.matchMedia('(min-width: 900px)');
+    var layout = null;
+    function setLayout(l) {
+      layout = l;
+      box.classList.remove('is-form', 'is-draw', 'is-wide');
+      box.classList.add('is-' + l);
+      if (l !== 'form') requestAnimationFrame(function () { ensureCanvas(); fit(); });
+    }
+    function relayout() {
+      if (wideMQ.matches) { if (layout !== 'wide') setLayout('wide'); else fit(); }
+      else if (layout === 'wide') setLayout('form');
+      else fit();
+    }
+    window.addEventListener('resize', relayout);
+    var pvImg = box.querySelector('.sk-preview img');
+    var pvT = box.querySelector('.sk-preview .t'), pvS = box.querySelector('.sk-preview small');
+    function setPreview(url) {
+      if (url) {
+        pvImg.src = url; pvImg.hidden = false;
+        pvT.textContent = '✏️ Изменить рисунок';
+        pvS.textContent = 'нажмите, чтобы рисовать на весь экран';
+      } else {
+        pvImg.hidden = true;
+        pvT.textContent = '🎨 Нарисовать эскиз';
+        pvS.textContent = 'нажмите — холст откроется на весь экран';
+      }
+    }
+    function updatePreview() {
       if (!c) return;
-      var aw = Math.max(200, stage.clientWidth - 20);
-      var ah = Math.max(220, window.innerHeight * (o.fields.length > 1 ? 0.58 : 0.66));
+      c.discardActiveObject(); c.renderAll();
+      var has = c.getObjects().length || c.backgroundImage;
+      setPreview(has ? c.toDataURL({ format: 'png', multiplier: Math.min(2, 700 / Math.max(1, W * scale)) }) : null);
+    }
+    setPreview(o.sketch && files.get(o.sketch.png) ? fileURL(o.sketch.png) : null);
+    box.querySelector('[data-a="draw"]').onclick = function () { setLayout('draw'); };
+    box.querySelector('[data-a="done"]').onclick = function () {
+      if (c) setMode(null);
+      updatePreview();
+      setLayout('form');
+    };
+
+    function fit() {
+      if (!c || !stage.clientWidth || !stage.clientHeight) return;
+      var aw = Math.max(150, stage.clientWidth - 16);
+      var ah = Math.max(150, stage.clientHeight - 16);
       scale = Math.min(aw / W, ah / H);
       c.setDimensions({ width: Math.round(W * scale), height: Math.round(H * scale) });
       c.setZoom(scale);
@@ -1120,13 +1185,23 @@
       setTimeout(function () { ta.focus(); ta.select(); }, 50);
     }
 
-    loadScript(CDN.fabric).then(function () {
+    // холст создаётся, когда впервые виден (в форме он не нужен)
+    function ensureCanvas() {
+      if (canvasStarted) return;
+      canvasStarted = true;
+      loadScript(CDN.fabric).then(initCanvas).catch(function () {
+        canvasStarted = false;
+        stage.innerHTML = '<div class="loading">Не удалось загрузить холст (нет интернета?). Нажмите «Готово» и опишите идею словами.</div>';
+      });
+    }
+    function initCanvas() {
       stage.innerHTML = '<canvas></canvas>';
       var sk = o.sketch;
       if (sk) { W = sk.w; H = sk.h; }
       else if (o.background) { W = o.background.w; H = o.background.h; }
       else {
-        var aw = Math.max(200, stage.clientWidth - 20), ah = window.innerHeight * 0.58;
+        // пропорции нового эскиза — по области рисования на этом устройстве
+        var aw = Math.max(200, stage.clientWidth - 16), ah = Math.max(200, stage.clientHeight - 16);
         W = 1000; H = Math.round(Math.min(1800, Math.max(560, 1000 * ah / aw)));
       }
       c = new fabric.Canvas(stage.querySelector('canvas'), {
@@ -1141,7 +1216,6 @@
       c.freeDrawingBrush.width = 6 * base();
       c.freeDrawingBrush.color = color;
       fit();
-      window.addEventListener('resize', fit);
 
       var ready = function () { c.renderAll(); hist = []; snap(); };
       if (sk && sk.json) {
@@ -1192,9 +1266,8 @@
       c.on('selection:created', syncTextBtn);
       c.on('selection:updated', syncTextBtn);
       c.on('selection:cleared', syncTextBtn);
-    }).catch(function () {
-      stage.innerHTML = '<div class="loading">Не удалось загрузить холст (нет интернета?). Можно написать всё словами ниже.</div>';
-    });
+    }
+    setLayout(wideMQ.matches ? 'wide' : (o.startDraw ? 'draw' : 'form'));
 
     function syncTextBtn() {
       var t = c.getActiveObject();
@@ -1264,7 +1337,8 @@
         if (err) { toast(err); return; }
         close();
       };
-      if (!c) { res.empty = true; return finish(); }
+      // холст не открывали — рисунок не менялся
+      if (!c) { res.empty = !o.sketch; if (o.sketch) res.sketch = o.sketch; return finish(); }
       setMode(null);
       c.discardActiveObject(); c.renderAll();
       res.empty = c.getObjects().length === 0 && !o.background && !(o.sketch && o.sketch.json && o.sketch.json.backgroundImage);
