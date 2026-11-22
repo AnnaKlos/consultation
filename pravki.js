@@ -1012,7 +1012,7 @@
     clearSelection();
     if (item) {
       return sketchEditor({
-        title: 'Рисунок поверх блока', startDraw: true, sub: item.t.kind + ' · ' + item.t.where, sketch: item.sketch,
+        title: 'Рисунок поверх блока', sub: item.t.kind + ' · ' + item.t.where, sketch: item.sketch,
         fields: [{ key: 'comment', label: 'Пояснение', value: item.comment, area: true }],
         onSave: function (res) { item.sketch = res.sketch; item.comment = res.comment; save(); toast('✓ Рисунок обновлён'); },
       });
@@ -1033,18 +1033,18 @@
         ignoreElements: function (n) { return n === host; },
       }).then(function (cv) {
         return {
-          url: cv.toDataURL('image/jpeg', 0.88), w: Math.round(vw), h: Math.round(vh),
+          url: cv.toDataURL('image/jpeg', 0.88), w: Math.round(vw), h: Math.round(vh), iw: cv.width, ih: cv.height,
           // где снимок лежит относительно блока — чтобы потом наложить пометки на сайт
           crop: { dx: vx - r.left, dy: vy - r.top, w: Math.round(vw), h: Math.round(vh), ew: r.width },
         };
       });
     }).then(function (shot) {
       sketchEditor({
-        title: 'Рисунок поверх блока', startDraw: true, sub: 'Обведите, зачеркните, поставьте стрелки, подпишите',
+        title: 'Рисунок поверх блока', sub: 'Обведите, зачеркните, поставьте стрелки, подпишите',
         background: shot,
         fields: [{ key: 'comment', label: 'Пояснение', value: '', area: true }],
         onSave: function (res) {
-          if (res.empty && !res.comment) return 'Нарисуйте что-нибудь или напишите пояснение';
+          if ((res.empty || res.blank) && !res.comment) return 'Нарисуйте что-нибудь или напишите пояснение';
           state.items.push({ id: uid(), type: 'draw', t: target(el), sketch: res.sketch, comment: res.comment });
           save();
           toast('✓ Рисунок сохранён. Ваши пометки видны поверх блока и уйдут в файл правок картинкой', 4500);
@@ -1117,11 +1117,12 @@
     window.addEventListener('resize', relayout);
     var pvImg = box.querySelector('.sk-preview img');
     var pvT = box.querySelector('.sk-preview .t'), pvS = box.querySelector('.sk-preview small');
-    function setPreview(url) {
+    function setPreview(url, fresh) {
       if (url) {
         pvImg.src = url; pvImg.hidden = false;
-        pvT.textContent = '✏️ Изменить рисунок';
-        pvS.textContent = 'нажмите, чтобы рисовать на весь экран';
+        // fresh — снимок блока, на котором ещё ничего не нарисовано
+        pvT.textContent = fresh ? '🎨 Нарисовать поверх снимка' : '✏️ Изменить рисунок';
+        pvS.textContent = fresh ? 'нажмите — снимок откроется на весь экран' : 'нажмите, чтобы рисовать на весь экран';
       } else {
         pvImg.hidden = true;
         pvT.textContent = '🎨 Нарисовать эскиз';
@@ -1132,9 +1133,12 @@
       if (!c) return;
       c.discardActiveObject(); c.renderAll();
       var has = c.getObjects().length || c.backgroundImage;
-      setPreview(has ? c.toDataURL({ format: 'png', multiplier: Math.min(2, 700 / Math.max(1, W * scale)) }) : null);
+      setPreview(has ? c.toDataURL({ format: 'png', multiplier: Math.min(2, 700 / Math.max(1, W * scale)) }) : null,
+        !c.getObjects().length && !!o.background);
     }
-    setPreview(o.sketch && files.get(o.sketch.png) ? fileURL(o.sketch.png) : null);
+    if (o.sketch && files.get(o.sketch.png)) setPreview(fileURL(o.sketch.png));
+    else if (o.background) setPreview(o.background.url, true);
+    else setPreview(null);
     box.querySelector('[data-a="draw"]').onclick = function () { setLayout('draw'); };
     box.querySelector('[data-a="done"]').onclick = function () {
       if (c) setMode(null);
@@ -1338,10 +1342,30 @@
         close();
       };
       // холст не открывали — рисунок не менялся
-      if (!c) { res.empty = !o.sketch; if (o.sketch) res.sketch = o.sketch; return finish(); }
+      if (!c) {
+        if (o.sketch) { res.sketch = o.sketch; return finish(); }
+        if (o.background) {
+          // только пояснение, без рисования — в правку уходит сам снимок блока
+          if (!res.comment) { toast('Нарисуйте что-нибудь или напишите пояснение'); return; }
+          var bg = o.background;
+          return blobFromDataURL(bg.url).then(function (blob) {
+            res.sketch = {
+              w: bg.w, h: bg.h, png: addFile(blob, 'sketch.jpg'), crop: bg.crop,
+              json: { version: '5.3.0', objects: [], background: '#ffffff', backgroundImage: {
+                type: 'image', version: '5.3.0', originX: 'left', originY: 'top', left: 0, top: 0,
+                width: bg.iw, height: bg.ih, scaleX: bg.w / bg.iw, scaleY: bg.h / bg.ih, src: bg.url,
+              } },
+            };
+            finish();
+          });
+        }
+        res.empty = true;
+        return finish();
+      }
       setMode(null);
       c.discardActiveObject(); c.renderAll();
-      res.empty = c.getObjects().length === 0 && !o.background && !(o.sketch && o.sketch.json && o.sketch.json.backgroundImage);
+      res.blank = c.getObjects().length === 0;
+      res.empty = res.blank && !o.background && !(o.sketch && o.sketch.json && o.sketch.json.backgroundImage);
       if (res.empty) return finish();
       var mult = (1 / scale) * Math.min(2, window.devicePixelRatio || 1);
       var url = c.toDataURL({ format: 'png', multiplier: mult });
