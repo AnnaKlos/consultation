@@ -319,6 +319,8 @@ body.menu-open .nav__menu-links a:nth-child(3) { transition-delay: .1s; }
 body.menu-open .nav__menu-links a:nth-child(4) { transition-delay: .15s; }
 body.menu-open .nav__menu-links a:nth-child(5) { transition-delay: .2s; }
 body.menu-open .nav__menu-links a:nth-child(6) { transition-delay: .25s; }
+body.menu-open .nav__menu-links a:nth-child(7) { transition-delay: .3s; }
+body.menu-open .nav__menu-links a:nth-child(8) { transition-delay: .35s; }
 .nav__menu-cta { position: relative; align-self: flex-start; }
 @media (min-width: 960px) { .nav__menu { display: none; } }
 
@@ -493,7 +495,7 @@ body.is-loaded .hero .photo picture img { transform: scale(1); }
 }
 
 /* =========================================================
-   02 — Подход
+   02 — Обо мне
    ========================================================= */
 .about__inner { display: grid; gap: 56px; }
 .about__media { display: flex; justify-content: flex-start; }
@@ -516,17 +518,29 @@ html.js .photo--round[data-reveal].is-in img { transform: scale(1); }
   font-family: var(--serif); font-weight: 400;
   font-size: clamp(1.65rem, 3vw, 2.5rem); line-height: 1.1;
 }
-/* Заливка начинается и заканчивается раньше: main.js считает прогресс по
-   offsetTop (translate его не меняет). Поднимаем «рамку» элемента на 20vh,
-   а сам текст визуально возвращаем на место через translate — заливка
-   завершается, пока абзац ещё в верхней трети экрана, а не у самой шапки. */
-.about .fill-text {
-  --fill-lead: 24vh;
-  margin-top: calc(clamp(72px, 16vh, 160px) - var(--fill-lead));
-  margin-bottom: var(--fill-lead);
-  translate: 0 var(--fill-lead);
+/* цифры опыта: сетка 2×2 с тонкими разделителями */
+.stats {
+  display: grid;
+  margin-top: clamp(56px, 10vh, 104px);
+  border-top: 1px solid var(--line-light);
 }
-html:not(.js) .about .fill-text { margin-top: clamp(72px, 16vh, 160px); margin-bottom: 0; translate: none; }
+.stat { padding-block: clamp(24px, 4vh, 36px); border-bottom: 1px solid var(--line-light); }
+.stat__num {
+  font-family: var(--serif); font-weight: 400;
+  font-size: clamp(2.3rem, 2.9vw, 2.8rem); line-height: 1;
+  color: var(--gold-deep);
+  font-variant-numeric: lining-nums tabular-nums;
+}
+.stat__text {
+  margin-top: 14px; max-width: 22em;
+  font-size: 14.5px; line-height: 1.55;
+  color: var(--stone);
+}
+@media (min-width: 560px) {
+  .stats { grid-template-columns: 1fr 1fr; }
+  .stat:nth-child(odd) { padding-right: clamp(20px, 3vw, 40px); border-right: 1px solid var(--line-light); }
+  .stat:nth-child(even) { padding-left: clamp(20px, 3vw, 40px); }
+}
 
 @media (min-width: 960px) {
   .about__inner { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: clamp(56px, 7vw, 120px); align-items: start; }
@@ -534,8 +548,100 @@ html:not(.js) .about .fill-text { margin-top: clamp(72px, 16vh, 160px); margin-b
   .photo--round { width: min(100%, 380px); }
 }
 
+/* общий заголовок раздела (как «Что вы получите») */
+.section-title {
+  font-family: var(--serif); font-weight: 400;
+  font-size: clamp(2.8rem, 6.4vw, 4.6rem); line-height: 1; letter-spacing: -.015em;
+  text-wrap: balance;
+}
+
 /* =========================================================
-   03 — Форматы
+   03 — С чем я работаю
+   ========================================================= */
+.requests::after {
+  content: ""; position: absolute; z-index: -1; pointer-events: none;
+  width: 60vmax; height: 60vmax; right: -26vmax; top: -10%;
+  background: radial-gradient(closest-side, rgba(190, 158, 108, .1), rgba(190, 158, 108, 0));
+}
+.requests { overflow: hidden; }
+.requests__head { margin-bottom: clamp(44px, 8vh, 80px); }
+.req-list { display: grid; }
+.req {
+  display: grid; grid-template-columns: 2.9rem 1fr; align-items: baseline;
+  padding-block: clamp(20px, 3.2vh, 30px);
+  border-bottom: 1px solid var(--line-dark);
+}
+.req:first-child { border-top: 1px solid var(--line-dark); }
+.req__num {
+  font-size: 12px; font-weight: 600; letter-spacing: .14em;
+  color: var(--gold-light);
+  font-variant-numeric: tabular-nums;
+}
+.req__name {
+  font-family: var(--serif); font-weight: 400;
+  font-size: clamp(1.45rem, 2.1vw, 1.8rem); line-height: 1.2;
+  color: var(--on-dark);
+  text-wrap: balance;
+}
+.requests__note {
+  margin-top: clamp(56px, 10vh, 96px);
+  max-width: 32em;
+  padding-top: 26px;
+  border-top: 1px solid rgba(190, 158, 108, .45);
+  font-family: var(--serif); font-weight: 400;
+  font-size: clamp(1.35rem, 2vw, 1.7rem); line-height: 1.4;
+  color: var(--on-dark-2);
+}
+.requests__note em { font-style: italic; color: var(--gold-light); }
+@media (min-width: 960px) {
+  .req-list { grid-template-columns: 1fr 1fr; column-gap: clamp(48px, 6vw, 112px); }
+  .req:nth-child(2) { border-top: 1px solid var(--line-dark); }
+}
+
+/* =========================================================
+   04 — Как проходит работа
+   ========================================================= */
+.process__head { margin-bottom: clamp(56px, 10vh, 96px); }
+.steps { display: grid; gap: clamp(48px, 8vh, 72px); }
+.step { position: relative; padding-top: 34px; border-top: 1px solid var(--line-light); }
+/* точки на линии — как на шкале «Форматов» */
+.step::before {
+  content: ""; position: absolute; left: 0; top: -5px;
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--cream); border: 1px solid var(--gold);
+}
+.step:last-child::before { background: var(--gold); }
+.step__num {
+  display: block; margin-bottom: 22px;
+  font-family: var(--serif); font-weight: 400;
+  font-size: clamp(4.2rem, 7vw, 6rem); line-height: .85;
+  color: rgba(160, 132, 88, .42);
+}
+.step__title {
+  font-family: var(--sans); font-weight: 600;
+  font-size: clamp(1.2rem, 1.6vw, 1.4rem); line-height: 1.3;
+  margin-bottom: 12px;
+}
+.step__text { max-width: 26em; font-size: 16px; line-height: 1.65; color: rgba(38, 38, 35, .72); }
+@media (min-width: 960px) {
+  .steps { grid-template-columns: 1fr 1fr; column-gap: clamp(48px, 6vw, 112px); border-top: 1px solid var(--line-light); }
+  .step { border-top: 0; }
+}
+
+/* Заливка начинается и заканчивается раньше: main.js считает прогресс по
+   offsetTop (translate его не меняет). Поднимаем «рамку» элемента на 20vh,
+   а сам текст визуально возвращаем на место через translate — заливка
+   завершается, пока абзац ещё в верхней трети экрана, а не у самой шапки. */
+.process .fill-text {
+  --fill-lead: 24vh;
+  margin-top: calc(clamp(72px, 16vh, 160px) - var(--fill-lead));
+  margin-bottom: var(--fill-lead);
+  translate: 0 var(--fill-lead);
+}
+html:not(.js) .process .fill-text { margin-top: clamp(72px, 16vh, 160px); margin-bottom: 0; translate: none; }
+
+/* =========================================================
+   05 — Форматы
    ========================================================= */
 .formats { background: var(--ink); }
 .formats::after {
@@ -822,7 +928,7 @@ html.js .card__result[data-reveal], html.js .card__extra[data-reveal],
 
 
 /* =========================================================
-   04 — Встреча
+   06 — Встреча
    ========================================================= */
 .meeting { overflow: hidden; }
 .meeting__inner { display: grid; gap: 56px; }
@@ -917,7 +1023,7 @@ html.js .meeting__lead.is-in .cup__steam { stroke-dashoffset: 0; }
 }
 
 /* =========================================================
-   05 — Итог
+   07 — Итог
    ========================================================= */
 .summary { background: var(--ink-2); }
 .summary__head { margin-bottom: clamp(48px, 9vh, 96px); }
@@ -949,7 +1055,7 @@ html.js .meeting__lead.is-in .cup__steam { stroke-dashoffset: 0; }
 }
 
 /* =========================================================
-   06 — Запись (светлая финальная страница)
+   08 — Запись (светлая финальная страница)
    ========================================================= */
 .contact {
   min-height: 88vh; min-height: 88svh;
